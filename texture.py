@@ -17,16 +17,27 @@ class Texture(mglw.WindowConfig):
         self.update_delay = 1 / 60  # updates per second
         self.last_updated = 0
 
-        self.width, self.height = 300, 300;
+        self.width, self.height = 400, 400;
         self.wnd.fixed_aspect_ratio = self.width / self.height
 
-        pixels = np.round(np.random.rand(self.width, self.height)).astype('f4')
+        pixels = np.round(np.zeros((self.width, self.height))).astype('f4')
 
-        self.num_agents = 100
-        self.agents = [Agent(
-            Vector(self.width, self.height),
-            random_vector_in_range(self.width, self.height),
-            random_unit_vector()) for _ in range(self.num_agents)]
+        self.num_agents = 400
+        radius = max(self.height, self.width) // 3
+        self.agents = []
+        for _ in range(self.num_agents):
+            a = random.uniform(0, 2 * math.pi)
+            r = random.uniform(0, radius)
+            pos = Vector(
+                self.width // 2 + r * math.cos(a),
+                self.height // 2 + r * math.sin(a),
+            )
+            self.agents.append(Agent(
+                    Vector(self.width, self.height),
+                    pos,
+                    a + math.pi
+                )
+            )
 
         self.display_prog = self.ctx.program(
             vertex_shader='''
@@ -91,49 +102,83 @@ class Texture(mglw.WindowConfig):
 
                 uniform sampler2D Texture;
 
+                uniform float speed;
+                uniform float turn_speed;
+                uniform float sensor_angle_spacing;
+                uniform float sensor_offset_dist;
+
+                uniform float pi = 3.14159265;
+
                 in vec2 in_pos;
-                in vec2 in_vel;
+                in float in_angle;
 
                 out vec2 out_pos;
-                out vec2 out_vel;
+                out float out_angle;
 
                 float cell(int x, int y) {
                     ivec2 tSize = textureSize(Texture, 0).xy;
                     return texelFetch(Texture, ivec2((x + tSize.x) % tSize.x, (y + tSize.y) % tSize.y), 0).r;
                 }
 
-                vec2 addAngle(vec2 vector, float angleOffset) {
-                    float original = acos(dot(vec2(1, 0), vector) / length(vector));
-                    float angle = original + angleOffset;
-                    return length(vector) * vec2(cos(angle), sin(angle));
+                float random() {
+                    int width = textureSize(Texture, 0).x;
+                    uint state = uint(in_pos.y * width + in_pos.x);
+                    state ^= 2747636419u;
+                    state *= 2654435769u;
+                    state ^= state >> 16;
+                    state *= 2654435769u;
+                    state ^= state >> 16;
+                    state *= 2654435769u;
+                    return float(state) / 4294967295.0;
                 }
                 
                 float sense(float angleOffset) {
-                    vec2 senseDir = addAngle(in_vel, angleOffset);
-                    vec2 sensePos = in_pos + senseDir * 5;
-                    return cell(int(sensePos.x), int(sensePos.y));
+                    float angle = in_angle + angleOffset;
+                    vec2 senseDir = vec2(cos(angle), sin(angle));
+                    vec2 sensePos = in_pos + senseDir * sensor_offset_dist;
+
+                    float sum = 0.0;
+                    for (int i = -1; i <= 1; i++) {
+                        for (int j = -1; i <= 1; i++) {
+                            vec2 pos = sensePos + vec2(i, j);
+                            sum += cell(int(pos.x), int(pos.y));
+                        }
+                    }
+
+                    return sum;
                 }
 
                 void main() {
-                    out_pos = in_pos + in_vel;
+                    vec2 vel = speed * vec2(cos(in_angle), sin(in_angle));
+                    out_pos = in_pos + vel;
 
                     ivec2 tSize = textureSize(Texture, 0).xy;
-                    out_pos = vec2(mod(out_pos.x, tSize.x), mod(out_pos.y, tSize.y));
 
                     float forward = sense(0);
-                    float left = sense(-0.5);
-                    float right = sense(0.5);
+                    float left = sense(-sensor_angle_spacing);
+                    float right = sense(sensor_angle_spacing);
 
                     if (forward > left && forward > right) {
-                        out_vel = in_vel;
+                        out_angle = in_angle;
+                    } else if (forward < left && forward < right) {
+                        out_angle = in_angle + (random() - 0.5) * 2 * turn_speed;
                     } else if (right > left) {
-                        out_vel = addAngle(in_vel, 0.1);
+                        out_angle = in_angle + turn_speed;
+                    } else if (right < left) {
+                        out_angle = in_angle - turn_speed;
                     } else {
-                        out_vel = addAngle(in_vel, -0.1);
+                        out_angle = in_angle;
+                    }
+
+                    if (out_pos.x < 0 || out_pos.x >= tSize.x || out_pos.y < 0 || out_pos.y >= tSize.y) {
+                        float x = min(tSize.x - 0.01, max(0, out_pos.x));
+                        float y = min(tSize.y - 0.01, max(0, out_pos.y));
+                        out_pos = vec2(x, y);
+                        out_angle = random() * 2 * pi;
                     }
                 }
             ''',
-            varyings=['out_pos', 'out_vel']
+            varyings=['out_pos', 'out_angle']
         )
 
         self.transform_prog = self.ctx.program(
@@ -141,9 +186,6 @@ class Texture(mglw.WindowConfig):
                 #version 330
 
                 uniform sampler2D Texture;
-                uniform float weight[5] = float[] (0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
-
-                uniform int Horizontal;
 
                 out float out_vert;
 
@@ -156,21 +198,18 @@ class Texture(mglw.WindowConfig):
                     int width = textureSize(Texture, 0).x;
                     ivec2 in_text = ivec2(gl_VertexID % width, gl_VertexID / width);
 
-                    float result = cell(in_text.x, in_text.y) * weight[0];
+                    float blurResult = 0.0;
 
-                    if (Horizontal == 1) {
-                        for (int i = 1; i < 5; i++) {
-                            result += cell(in_text.x + i, in_text.y) * weight[i];
-                            result += cell(in_text.x - i, in_text.y) * weight[i];
-                        }
-                    } else {
-                        for (int i = 1; i < 5; i++) {
-                            result += cell(in_text.x, in_text.y + i) * weight[i];
-                            result += cell(in_text.x, in_text.y - i) * weight[i];
+                    for (int i = -1; i <= 1; i++) {
+                        for (int j = -1; j <= 1; j++) {
+                            blurResult += cell(in_text.x + i, in_text.y + j);
                         }
                     }
+                    blurResult /= 9;
 
-                    out_vert = result * 0.99;
+                    float diffused = mix(cell(in_text.x, in_text.y), blurResult, 0.2);
+
+                    out_vert = max(0, diffused - 0.0055);
                 }
             ''',
             varyings=['out_vert']
@@ -241,9 +280,19 @@ class Texture(mglw.WindowConfig):
             #     ], dtype="f4"))
             # self.vao = self.ctx.simple_vertex_array(self.display_prog, self.vbo, 'in_vert', 'in_texcoord')
 
+            # uniform float speed;
+            # uniform float turn_speed;
+            # uniform float sensor_angle_spacing;
+            # uniform float sensor_offset_dist;
+
+            self.mold_prog['speed'] = 1.0
+            self.mold_prog['turn_speed'] = 0.2
+            self.mold_prog['sensor_angle_spacing'] = 0.2
+            self.mold_prog['sensor_offset_dist'] = 3.0
+
             mold_vbo = self.ctx.buffer(np.array(agents_to_array(self.agents), dtype='f4'))
-            mold_tao = self.ctx.vertex_array(self.mold_prog, mold_vbo, 'in_pos', 'in_vel')
-            mold_pbo = self.ctx.buffer(reserve=self.num_agents * 4 * 4)
+            mold_tao = self.ctx.vertex_array(self.mold_prog, mold_vbo, 'in_pos', 'in_angle')
+            mold_pbo = self.ctx.buffer(reserve=self.num_agents * 3 * 4)
             mold_tao.transform(mold_pbo)
             data = struct.unpack(str(mold_pbo.size // 4) + 'f', mold_pbo.read())
             update_agents(self.agents, data)
@@ -258,11 +307,9 @@ class Texture(mglw.WindowConfig):
 
             self.texture.write(self.blend_pbo)
 
-            for i in range(2):
-                self.transform_prog['Horizontal'].value = i % 2
-                tao = self.ctx.vertex_array(self.transform_prog, [])
-                tao.transform(self.pbo, vertices=self.width * self.height)
-                self.texture.write(self.pbo)
+            tao = self.ctx.vertex_array(self.transform_prog, [])
+            tao.transform(self.pbo, vertices=self.width * self.height)
+            self.texture.write(self.pbo)
 
             self.last_updated = time
 

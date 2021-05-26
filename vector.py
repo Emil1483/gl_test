@@ -12,6 +12,14 @@ def random_vector_in_range(max_x, max_y):
         random.random() * max_y
     )
 
+def random_vector_in_circle(pos, radius):
+    a = random.uniform(0, 2 * math.pi)
+    r = random.uniform(0, radius)
+    return Vector(
+        pos.x + r * math.cos(a),
+        pos.y + r * math.sin(a),
+    )
+
 class Vector:
     '''
     This is a wrapper for an array such that it behaves like a vector.

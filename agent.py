@@ -7,7 +7,7 @@ def pixels_from_agents(width, height, agents):
     for agent in agents:
         pos = agent.pos
         index = floor(pos.y) * width + floor(pos.x)
-        pixels[int(index)] = 2.0
+        pixels[int(index)] = 1.00001
     return np.array(pixels).astype('f4')
 
 def agents_to_array(agents):
@@ -15,25 +15,23 @@ def agents_to_array(agents):
     for agent in agents:
         result.append(agent.pos.x)
         result.append(agent.pos.y)
-        result.append(agent.vel.x)
-        result.append(agent.vel.y)
+        result.append(agent.angle)
     return result
 
 def update_agents(agents, data):
-    for i in range(0, len(data), 4):
+    for i in range(0, len(data), 3):
         pos_x = data[i]
         pos_y = data[i + 1]
-        vel_x = data[i + 2]
-        vel_y = data[i + 3]
+        angle = data[i + 2]
         
-        agents[i // 4].pos = Vector(pos_x, pos_y)
-        agents[i // 4].vel = Vector(vel_x, vel_y)
+        agents[i // 3].pos = Vector(pos_x, pos_y)
+        agents[i // 3].angle = angle
 
 class Agent:
-    def __init__(self, size, pos, vel):
+    def __init__(self, size, pos, angle):
         self.size = size
         self.pos = pos
-        self.vel = vel
+        self.angle = angle
     
     def update(self):
         self.pos += self.vel
