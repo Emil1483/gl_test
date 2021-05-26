@@ -1,5 +1,5 @@
 import numpy as np
-import  vector
+from vector import Vector
 from math import floor
 
 def pixels_from_agents(width, height, agents):
@@ -7,8 +7,27 @@ def pixels_from_agents(width, height, agents):
     for agent in agents:
         pos = agent.pos
         index = floor(pos.y) * width + floor(pos.x)
-        pixels[int(index)] = 5.0
+        pixels[int(index)] = 2.0
     return np.array(pixels).astype('f4')
+
+def agents_to_array(agents):
+    result = []
+    for agent in agents:
+        result.append(agent.pos.x)
+        result.append(agent.pos.y)
+        result.append(agent.vel.x)
+        result.append(agent.vel.y)
+    return result
+
+def update_agents(agents, data):
+    for i in range(0, len(data), 4):
+        pos_x = data[i]
+        pos_y = data[i + 1]
+        vel_x = data[i + 2]
+        vel_y = data[i + 3]
+        
+        agents[i // 4].pos = Vector(pos_x, pos_y)
+        agents[i // 4].vel = Vector(vel_x, vel_y)
 
 class Agent:
     def __init__(self, size, pos, vel):

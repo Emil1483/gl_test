@@ -90,22 +90,50 @@ class Texture(mglw.WindowConfig):
                 #version 330
 
                 uniform sampler2D Texture;
-                uniform vec2 in_vert;
 
-                out float out_vert;
+                in vec2 in_pos;
+                in vec2 in_vel;
+
+                out vec2 out_pos;
+                out vec2 out_vel;
+
+                float cell(int x, int y) {
+                    ivec2 tSize = textureSize(Texture, 0).xy;
+                    return texelFetch(Texture, ivec2((x + tSize.x) % tSize.x, (y + tSize.y) % tSize.y), 0).r;
+                }
+
+                vec2 addAngle(vec2 vector, float angleOffset) {
+                    float original = acos(dot(vec2(1, 0), vector) / length(vector));
+                    float angle = original + angleOffset;
+                    return length(vector) * vec2(cos(angle), sin(angle));
+                }
+                
+                float sense(float angleOffset) {
+                    vec2 senseDir = addAngle(in_vel, angleOffset);
+                    vec2 sensePos = in_pos + senseDir * 5;
+                    return cell(int(sensePos.x), int(sensePos.y));
+                }
 
                 void main() {
-                    int width = textureSize(Texture, 0).x;
-                    ivec2 in_text = ivec2(gl_VertexID % width, gl_VertexID / width);
-                    if (in_text == in_vert) {
-                        out_vert = 5.0;
+                    out_pos = in_pos + in_vel;
+
+                    ivec2 tSize = textureSize(Texture, 0).xy;
+                    out_pos = vec2(mod(out_pos.x, tSize.x), mod(out_pos.y, tSize.y));
+
+                    float forward = sense(0);
+                    float left = sense(-0.5);
+                    float right = sense(0.5);
+
+                    if (forward > left && forward > right) {
+                        out_vel = in_vel;
+                    } else if (right > left) {
+                        out_vel = addAngle(in_vel, 0.1);
                     } else {
-                        vec4 val = texelFetch(Texture, in_text, 0);
-                        out_vert = val.r;
+                        out_vel = addAngle(in_vel, -0.1);
                     }
                 }
             ''',
-            varyings=['out_vert']
+            varyings=['out_pos', 'out_vel']
         )
 
         self.transform_prog = self.ctx.program(
@@ -162,9 +190,6 @@ class Texture(mglw.WindowConfig):
 
         self.pbo = self.ctx.buffer(reserve=pixels.nbytes)
 
-        self.mold_tao = self.ctx.vertex_array(self.mold_prog, [])
-        self.mold_pbo = self.ctx.buffer(reserve=pixels.nbytes)
-
         self.blend_tao = self.ctx.vertex_array(self.blend_prog, [])
         self.blend_pbo = self.ctx.buffer(reserve=pixels.nbytes)
 
@@ -205,7 +230,23 @@ class Texture(mglw.WindowConfig):
             # pixels[(1 + self.height) * self.width // 2] = 15
             # pixels = np.array(pixels).astype('f4')
 
-            for agent in self.agents: agent.update()
+            # for agent in self.agents: agent.update()
+
+            # self.vbo = self.ctx.buffer(np.array([
+            #     # x    y     u  v
+            #     -1.0, -1.0,  0, 0,  # lower left
+            #     -1.0,  1.0,  0, 1,  # upper left
+            #     1.0,  -1.0,  1, 0,  # lower right
+            #     1.0,   1.0,  1, 1,  # upper right
+            #     ], dtype="f4"))
+            # self.vao = self.ctx.simple_vertex_array(self.display_prog, self.vbo, 'in_vert', 'in_texcoord')
+
+            mold_vbo = self.ctx.buffer(np.array(agents_to_array(self.agents), dtype='f4'))
+            mold_tao = self.ctx.vertex_array(self.mold_prog, mold_vbo, 'in_pos', 'in_vel')
+            mold_pbo = self.ctx.buffer(reserve=self.num_agents * 4 * 4)
+            mold_tao.transform(mold_pbo)
+            data = struct.unpack(str(mold_pbo.size // 4) + 'f', mold_pbo.read())
+            update_agents(self.agents, data)
 
             pixels = pixels_from_agents(self.width, self.height, self.agents)
             mold_texture = self.ctx.texture((self.width, self.height), 1, pixels.tobytes(), dtype='f4')
