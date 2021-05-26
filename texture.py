@@ -9,7 +9,7 @@ from vector import *
 
 class Texture(mglw.WindowConfig):
     title = "Texture"
-    window_size = 800, 800
+    window_size = 400, 400
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -17,13 +17,13 @@ class Texture(mglw.WindowConfig):
         self.update_delay = 1 / 60  # updates per second
         self.last_updated = 0
 
-        self.width, self.height = 400, 400;
+        self.width, self.height = self.window_size;
         self.wnd.fixed_aspect_ratio = self.width / self.height
 
         pixels = np.round(np.zeros((self.width, self.height))).astype('f4')
 
-        self.num_agents = 400
-        radius = max(self.height, self.width) // 3
+        self.num_agents = 13_000
+        radius = min(self.height, self.width) // 3
         self.agents = []
         for _ in range(self.num_agents):
             a = random.uniform(0, 2 * math.pi)
@@ -209,7 +209,7 @@ class Texture(mglw.WindowConfig):
 
                     float diffused = mix(cell(in_text.x, in_text.y), blurResult, 0.2);
 
-                    out_vert = max(0, diffused - 0.0055);
+                    out_vert = max(0, diffused - 0.07);
                 }
             ''',
             varyings=['out_vert']
@@ -286,8 +286,8 @@ class Texture(mglw.WindowConfig):
             # uniform float sensor_offset_dist;
 
             self.mold_prog['speed'] = 1.0
-            self.mold_prog['turn_speed'] = 0.2
-            self.mold_prog['sensor_angle_spacing'] = 0.2
+            self.mold_prog['turn_speed'] = 0.25
+            self.mold_prog['sensor_angle_spacing'] = 0.4
             self.mold_prog['sensor_offset_dist'] = 3.0
 
             mold_vbo = self.ctx.buffer(np.array(agents_to_array(self.agents), dtype='f4'))
