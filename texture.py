@@ -9,7 +9,7 @@ from vector import *
 
 class Texture(mglw.WindowConfig):
     title = "Texture"
-    window_size = 400, 400
+    window_size = 120, 120
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -22,22 +22,33 @@ class Texture(mglw.WindowConfig):
 
         pixels = np.round(np.zeros((self.width, self.height))).astype('f4')
 
-        self.num_agents = 13_000
-        radius = min(self.height, self.width) // 3
-        self.agents = []
-        for _ in range(self.num_agents):
-            a = random.uniform(0, 2 * math.pi)
-            r = random.uniform(0, radius)
-            pos = Vector(
-                self.width // 2 + r * math.cos(a),
-                self.height // 2 + r * math.sin(a),
-            )
-            self.agents.append(Agent(
-                    Vector(self.width, self.height),
-                    pos,
-                    a + math.pi
-                )
-            )
+        self.num_agents = 100
+        self.mold_renderer = self.ctx.program(
+            vertex_shader='''
+                #version 330
+
+                uniform float width;
+                uniform float height;
+
+                in vec3 in_vert;
+
+                void main() {
+                    gl_Position = vec4(in_vert.x * 2 / width - 1, in_vert.y * 2 / height - 1, 0.0, 1.0);
+                }
+            ''',
+            fragment_shader='''
+                #version 330
+
+                out vec3 color;
+
+                void main() {
+                    color = vec3(1.0, 1.0, 1.0);
+                }
+            ''',
+        )
+
+        self.mold_renderer['width'] = self.width
+        self.mold_renderer['height'] = self.height
 
         self.display_prog = self.ctx.program(
             vertex_shader='''
@@ -232,13 +243,41 @@ class Texture(mglw.WindowConfig):
         self.blend_tao = self.ctx.vertex_array(self.blend_prog, [])
         self.blend_pbo = self.ctx.buffer(reserve=pixels.nbytes)
 
+        self.mold_prog['speed'] = 1.0
+        self.mold_prog['turn_speed'] = 0.25
+        self.mold_prog['sensor_angle_spacing'] = 0.4
+        self.mold_prog['sensor_offset_dist'] = 3.0
+
+        agents = []
+        radius = min(self.height, self.width) // 3
+        for _ in range(self.num_agents):
+            a = random.uniform(0, 2 * math.pi)
+            r = random.uniform(0, radius)
+            pos = Vector(
+                self.width // 2 + r * math.cos(a),
+                self.height // 2 + r * math.sin(a),
+            )
+            agents.append(pos.x)
+            agents.append(pos.y)
+            agents.append(a + math.pi)
+
+        self.mold_vbo1 = self.ctx.buffer(np.array(agents).astype('f4'))
+        self.mold_vbo2 = self.ctx.buffer(reserve=self.mold_vbo1.size)
+        self.mold_transform_vao  = self.ctx.simple_vertex_array(self.mold_prog, self.mold_vbo1, 'in_pos', 'in_angle')
+        self.mold_renderer_vao = self.ctx.vertex_array(self.mold_renderer, self.mold_vbo1, 'in_vert')
+
+        self.mold_texture = self.ctx.texture((self.width, self.height), 1, dtype='f4')
+
+        self.blend_prog['texture2'] = 1
+
     def render(self, time, frame_time):
-        self.ctx.clear(1.0, 1.0, 1.0)
+        self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
+        self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
 
         # Bind texture to channel 0
         self.texture.use(location=0)
+        self.mold_texture.use(location=1)
 
-        if time - self.last_updated > self.update_delay:
             # pbo = self.ctx.buffer(reserve=self.width * self.height * 4)
             # self.texture.read_into(pbo)
 
@@ -285,33 +324,33 @@ class Texture(mglw.WindowConfig):
             # uniform float sensor_angle_spacing;
             # uniform float sensor_offset_dist;
 
-            self.mold_prog['speed'] = 1.0
-            self.mold_prog['turn_speed'] = 0.25
-            self.mold_prog['sensor_angle_spacing'] = 0.4
-            self.mold_prog['sensor_offset_dist'] = 3.0
+            # mold_vbo = self.ctx.buffer(np.array(agents_to_array(self.agents), dtype='f4'))
+            # mold_tao = self.ctx.vertex_array(self.mold_prog, mold_vbo, 'in_pos', 'in_angle')
+            # mold_pbo = self.ctx.buffer(reserve=self.num_agents * 3 * 4)
+            # mold_tao.transform(mold_pbo)
+            # data = struct.unpack(str(mold_pbo.size // 4) + 'f', mold_pbo.read())
+            # update_agents(self.agents, data)
 
-            mold_vbo = self.ctx.buffer(np.array(agents_to_array(self.agents), dtype='f4'))
-            mold_tao = self.ctx.vertex_array(self.mold_prog, mold_vbo, 'in_pos', 'in_angle')
-            mold_pbo = self.ctx.buffer(reserve=self.num_agents * 3 * 4)
-            mold_tao.transform(mold_pbo)
-            data = struct.unpack(str(mold_pbo.size // 4) + 'f', mold_pbo.read())
-            update_agents(self.agents, data)
+            # pixels = pixels_from_agents(self.width, self.height, self.agents)
+            # mold_texture = self.ctx.texture((self.width, self.height), 1, pixels.tobytes(), dtype='f4')
+            # mold_texture.use(location=1)
+        self.mold_transform_vao.transform(self.mold_vbo2)
 
-            pixels = pixels_from_agents(self.width, self.height, self.agents)
-            mold_texture = self.ctx.texture((self.width, self.height), 1, pixels.tobytes(), dtype='f4')
-            mold_texture.use(location=1)
+        buffer = self.ctx.buffer(reserve=self.width * self.height)
+        self.mold_renderer_vao.render_indirect(buffer, mode=moderngl.POINTS)
+        self.mold_texture.write(buffer)
 
-            self.blend_prog['texture2'] = 1
+        self.ctx.copy_buffer(self.mold_vbo1, self.mold_vbo2)
 
-            self.blend_tao.transform(self.blend_pbo, vertices=self.width * self.height)
+        self.blend_tao.transform(self.blend_pbo, vertices=self.width * self.height)
 
-            self.texture.write(self.blend_pbo)
+        self.texture.write(self.blend_pbo)
 
-            tao = self.ctx.vertex_array(self.transform_prog, [])
-            tao.transform(self.pbo, vertices=self.width * self.height)
-            self.texture.write(self.pbo)
+        tao = self.ctx.vertex_array(self.transform_prog, [])
+        tao.transform(self.pbo, vertices=self.width * self.height)
+        self.texture.write(self.pbo)
 
-            self.last_updated = time
+        self.last_updated = time
 
         # Render the texture
         self.vao.render(moderngl.TRIANGLE_STRIP)

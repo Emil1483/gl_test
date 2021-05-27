@@ -1,13 +1,14 @@
 import numpy as np
 
+import struct
 import moderngl
 import moderngl_window as mglw
 
-def agent(width, height):
+def agent():
     a = np.random.uniform(0.0, np.pi * 2.0)
     return np.array([
-        np.random.uniform(0, width),
-        np.random.uniform(0, height),
+        np.random.uniform(-1, 1),
+        np.random.uniform(-1, 1),
         np.random.uniform(0.0, np.pi * 2.0),
     ]).astype('f4')
 
@@ -19,25 +20,24 @@ class Particles(mglw.WindowConfig):
             vertex_shader='''
                 #version 330
 
-                in vec2 in_vert;
-                in float in_angle;
+                in vec3 in_vert;
 
-                out float out_angle;
+                out float angle;
 
                 void main() {
-                    gl_Position = vec4(in_vert, 0.0, in_angle);
-                    out_angle = in_angle;
+                    gl_Position = vec4(in_vert.x, in_vert.y, 0.0, 1.0);
+                    angle = in_vert.z;
                 }
             ''',
             fragment_shader='''
                 #version 330
 
-                in float in_angle;
+                in float angle;
 
-                out vec4 f_color;
+                out vec3 color;
 
                 void main() {
-                    f_color = vec4(in_angle / 4, 0.50, 1.00, 1.0);
+                    color = vec3(angle, 0.50, 1.00);
                 }
             ''',
         )
@@ -46,39 +46,35 @@ class Particles(mglw.WindowConfig):
             vertex_shader='''
             #version 330
 
-            uniform vec2 Acc;
+            in vec3 in_vert;
 
-            in vec2 in_pos;
-            in float in_angle;
-
-            out vec2 out_pos;
-            out float out_angle;
+            out vec3 out_vert;
 
             void main() {
-                vec2 vel = vec2(cos(in_angle), sin(in_angle));
-                out_pos = in_pos + vel;
-                out_angle = in_angle;
+                vec2 vel = vec2(cos(in_vert.z), sin(in_vert.z));
+                out_vert = vec3(in_vert.xy + vel * 0.001, in_vert.z);
             }
         ''',
-            varyings=['out_pos', 'out_angle']
+            varyings=['out_vert']
         )
+        self.num_agents = 1_000
 
-        self.num_agents = 100
+        agents = np.array([agent() for _ in range(self.num_agents)])
+        self.agents_buffer1 = self.ctx.buffer(agents.astype('f4'))
+        self.agents_buffer2 = self.ctx.buffer(reserve=self.agents_buffer1.size)
+        self.vao = self.ctx.vertex_array(self.prog, self.agents_buffer1, 'in_vert')
 
-        self.vbo1 = self.ctx.buffer(b''.join(agent(*self.window_size) for _ in range(self.num_agents)))
-        self.vbo2 = self.ctx.buffer(reserve=self.vbo1.size)
-
-        self.vao = self.ctx.simple_vertex_array(self.transform, self.vbo1, 'in_pos', 'in_angle')
-
-        self.render_vao = self.ctx.vertex_array(self.prog, self.vbo1, 'in_vert', 'in_angle')
+        self.transform_vao = self.ctx.simple_vertex_array(self.transform, self.agents_buffer1, 'in_vert')
 
     def render(self, time, frame_time):
-        self.ctx.clear(1.0, 1.0, 1.0)
-        self.ctx.point_size = 5.0
+        self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
+        self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
 
-        self.render_vao.render(moderngl.POINTS, self.num_agents)
-        self.vao.transform(self.vbo2, moderngl.POINTS, self.num_agents)
-        self.ctx.copy_buffer(self.vbo1, self.vbo2)
+        self.transform_vao.transform(self.agents_buffer2, vertices=self.num_agents * 3)
+
+        self.vao.render(mode=moderngl.POINTS)
+
+        self.ctx.copy_buffer(self.agents_buffer1, self.agents_buffer2)
 
 if __name__ == '__main__':
     Particles.run()
