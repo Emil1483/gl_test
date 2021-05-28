@@ -37,7 +37,7 @@ class Particles(mglw.WindowConfig):
                 out vec3 color;
 
                 void main() {
-                    color = vec3(angle, 0.50, 1.00);
+                    color = vec3(angle, angle, angle);
                 }
             ''',
         )
@@ -46,29 +46,51 @@ class Particles(mglw.WindowConfig):
             vertex_shader='''
             #version 330
 
-            in vec3 in_vert;
+            uniform float pi = 3.14159265;
 
-            out vec3 out_vert;
+            in vec2 in_pos;
+            in float in_angle;
+
+            out vec2 out_pos;
+            out float out_angle;
+
+            float random() {
+                uint state = uint(in_pos.y * 2000 + in_pos.x);
+                state ^= 2747636419u;
+                state *= 2654435769u;
+                state ^= state >> 16;
+                state *= 2654435769u;
+                state ^= state >> 16;
+                state *= 2654435769u;
+                return float(state) / 4294967295.0;
+            }
 
             void main() {
-                vec2 vel = vec2(cos(in_vert.z), sin(in_vert.z));
-                out_vert = vec3(in_vert.xy + vel * 0.001, in_vert.z);
+                vec2 vel = vec2(cos(in_angle), sin(in_angle));
+                out_pos = in_pos + vel * 0.002;
+                out_angle = in_angle;
+
+                if (out_pos.x <= -1 || out_pos.x >= 1 || out_pos.y <= -1 || out_pos.y >= 1) {
+                    float x = min(0.99, max(-0.99, out_pos.x));
+                    float y = min(0.99, max(-0.99, out_pos.y));
+                    out_pos = vec2(x, y);
+                    out_angle += pi / 2 + random() * pi;
+                }
             }
         ''',
-            varyings=['out_vert']
+            varyings=['out_pos', 'out_angle']
         )
-        self.num_agents = 1_000
+        self.num_agents = 100
 
         agents = np.array([agent() for _ in range(self.num_agents)])
         self.agents_buffer1 = self.ctx.buffer(agents.astype('f4'))
         self.agents_buffer2 = self.ctx.buffer(reserve=self.agents_buffer1.size)
         self.vao = self.ctx.vertex_array(self.prog, self.agents_buffer1, 'in_vert')
 
-        self.transform_vao = self.ctx.simple_vertex_array(self.transform, self.agents_buffer1, 'in_vert')
+        self.transform_vao = self.ctx.simple_vertex_array(self.transform, self.agents_buffer1, 'in_pos', 'in_angle')
 
     def render(self, time, frame_time):
-        self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
-        self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
+        self.ctx.point_size = 1.0
 
         self.transform_vao.transform(self.agents_buffer2, vertices=self.num_agents * 3)
 
