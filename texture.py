@@ -17,12 +17,12 @@ class Texture(mglw.WindowConfig):
         self.update_delay = 1 / 60  # updates per second
         self.last_updated = 0
 
-        self.width, self.height = 400, 400;
+        self.width, self.height = 600, 600;
         self.wnd.fixed_aspect_ratio = self.width / self.height
 
         pixels = np.round(np.zeros((self.width, self.height))).astype('f4')
 
-        self.num_agents = 400
+        self.num_agents = 6_000
         radius = max(self.height, self.width) // 3
         self.agents = []
         for _ in range(self.num_agents):
@@ -239,54 +239,9 @@ class Texture(mglw.WindowConfig):
         self.texture.use(location=0)
 
         if time - self.last_updated > self.update_delay:
-            # pbo = self.ctx.buffer(reserve=self.width * self.height * 4)
-            # self.texture.read_into(pbo)
-
-            # data = struct.unpack(str(self.width * self.height) + 'f', pbo.read())
-
-            # pixels = np.array(data).astype('f4')
-
-            # pixels[(self.height + 1) * self.width // 2] = 5
-
-            # pixels = np.round(np.random.rand(self.width, self.height)).astype('f4')
-
-            # self.texture = self.ctx.texture((self.width, self.height), 1, pixels.tobytes(), dtype='f4')
-            # self.texture.filter = moderngl.NEAREST, moderngl.NEAREST
-            # self.texture.swizzle = 'RRR1'
-            # self.texture.use(location=0)
-            # self.texture.write(self.pbo)
-            # pixels = self.ctx.buffer(reserve=self.width * self.height)
-            # self.texture.read_into(pixels)
-            # pixels.write(b'f')
-            # pixels.write(self.pbo)
-
-            # self.mold_prog['in_vert'].value = self.width // 2, self.height // 2
-            # self.mold_tao.transform(self.mold_pbo, vertices=self.width * self.height)
-            # mold_texture = self.ctx.texture((self.width, self.height), 1, self.mold_pbo.read(), dtype='f4')
-            # mold_texture.use(location=1)
-
-            # pixels = [0] * self.width * self.height
-            # pixels[(1 + self.height) * self.width // 2] = 15
-            # pixels = np.array(pixels).astype('f4')
-
-            # for agent in self.agents: agent.update()
-
-            # self.vbo = self.ctx.buffer(np.array([
-            #     # x    y     u  v
-            #     -1.0, -1.0,  0, 0,  # lower left
-            #     -1.0,  1.0,  0, 1,  # upper left
-            #     1.0,  -1.0,  1, 0,  # lower right
-            #     1.0,   1.0,  1, 1,  # upper right
-            #     ], dtype="f4"))
-            # self.vao = self.ctx.simple_vertex_array(self.display_prog, self.vbo, 'in_vert', 'in_texcoord')
-
-            # uniform float speed;
-            # uniform float turn_speed;
-            # uniform float sensor_angle_spacing;
-            # uniform float sensor_offset_dist;
 
             self.mold_prog['speed'] = 1.0
-            self.mold_prog['turn_speed'] = 0.2
+            self.mold_prog['turn_speed'] = 1.0
             self.mold_prog['sensor_angle_spacing'] = 0.2
             self.mold_prog['sensor_offset_dist'] = 3.0
 
