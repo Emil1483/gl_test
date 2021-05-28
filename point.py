@@ -80,6 +80,53 @@ class Particles(mglw.WindowConfig):
         ''',
             varyings=['out_pos', 'out_angle']
         )
+
+        self.display_prog = self.ctx.program(
+            vertex_shader='''
+                #version 330
+
+                in vec2 in_vert;
+                in vec2 in_texcoord;
+
+                out vec2 v_text;
+
+                void main() {
+                    v_text = in_texcoord;
+                    gl_Position = vec4(in_vert, 0.0, 1.0);
+                }
+            ''',
+            fragment_shader='''
+                #version 330
+
+                // Will read from texture bound to channel / locaton 0 by default
+                uniform sampler2D Texture;
+
+                // Interpolated texture coordinate from vertex shader
+                in vec2 v_text;
+                // The fragment ending up on the screen
+                out vec4 f_color;
+
+                void main() {
+                    f_color = texture(Texture, v_text);
+                }
+            ''',
+        )
+
+        pixels = np.round(np.random.rand(*self.window_size)).astype('f4')
+        self.texture = self.ctx.texture(self.window_size, 1, pixels.tobytes(), dtype='f4')
+        self.texture.filter = moderngl.NEAREST, moderngl.NEAREST
+        self.texture.swizzle = 'RRR1'
+        self.texture_vbo = self.ctx.buffer(np.array([
+            # x    y     u  v
+            -1.0, -1.0,  0, 0,  # lower left
+            -1.0,  1.0,  0, 1,  # upper left
+            1.0,  -1.0,  1, 0,  # lower right
+            1.0,   1.0,  1, 1,  # upper right
+        ], dtype="f4"))
+        self.texture_vao = self.ctx.simple_vertex_array(self.display_prog, self.texture_vbo, 'in_vert', 'in_texcoord')
+        self.texture_pbo = self.ctx.buffer(reserve=pixels.nbytes)
+        self.texture_buffer = self.ctx.renderbuffer(self.window_size)
+
         self.num_agents = 100
 
         agents = np.array([agent() for _ in range(self.num_agents)])
@@ -92,9 +139,13 @@ class Particles(mglw.WindowConfig):
     def render(self, time, frame_time):
         self.ctx.point_size = 1.0
 
+        self.texture.use(location=0)
+
         self.transform_vao.transform(self.agents_buffer2, vertices=self.num_agents * 3)
 
         self.vao.render(mode=moderngl.POINTS)
+
+        #self.texture_vao.render(moderngl.TRIANGLE_STRIP)
 
         self.ctx.copy_buffer(self.agents_buffer1, self.agents_buffer2)
 
