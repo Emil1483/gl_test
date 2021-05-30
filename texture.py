@@ -4,11 +4,12 @@ import moderngl_window as mglw
 import struct
 from agent import *
 from vector import *
+import sys
 
 # http://glslsandbox.com/e#375.15
 
 class Texture(mglw.WindowConfig):
-    title = "Texture"
+    title = "Slim"
     window_size = 800, 800
 
     def __init__(self, **kwargs):
@@ -22,7 +23,7 @@ class Texture(mglw.WindowConfig):
 
         pixels = np.round(np.zeros((self.width, self.height))).astype('f4')
 
-        self.num_agents = 6_000
+        self.num_agents = 10_000
         radius = max(self.height, self.width) // 3
         self.agents = []
         for _ in range(self.num_agents):
@@ -240,10 +241,10 @@ class Texture(mglw.WindowConfig):
 
         if time - self.last_updated > self.update_delay:
 
-            self.mold_prog['speed'] = 1.0
-            self.mold_prog['turn_speed'] = 1.0
-            self.mold_prog['sensor_angle_spacing'] = 0.2
-            self.mold_prog['sensor_offset_dist'] = 3.0
+            self.mold_prog['speed'] = self.fart
+            self.mold_prog['turn_speed'] = self.rotasjons_fart
+            self.mold_prog['sensor_angle_spacing'] = self.sensor_vinkel_mellomrom
+            self.mold_prog['sensor_offset_dist'] = self.sensor_distanse
 
             mold_vbo = self.ctx.buffer(np.array(agents_to_array(self.agents), dtype='f4'))
             mold_tao = self.ctx.vertex_array(self.mold_prog, mold_vbo, 'in_pos', 'in_angle')
